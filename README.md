@@ -77,8 +77,8 @@ Lets an LLM list calls, fetch transcripts, query user/team statistics, and updat
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/<your-user>/gong-mcp.git
-cd gong-mcp
+git clone https://github.com/lionelquellery/Gong-mcp-full-api-integration.git
+cd Gong-mcp-full-api-integration
 
 # 2. Create your .env file from the template
 cp .env.example .env
@@ -98,8 +98,8 @@ docker run --rm -i --env-file .env gong-mcp:latest
 
 ```bash
 # 1. Clone and enter the directory
-git clone https://github.com/<your-user>/gong-mcp.git
-cd gong-mcp
+git clone https://github.com/lionelquellery/Gong-mcp-full-api-integration.git
+cd Gong-mcp-full-api-integration
 
 # 2. Install dependencies
 npm install
