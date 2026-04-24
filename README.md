@@ -12,8 +12,9 @@ Lets an LLM list calls, fetch transcripts, query user/team statistics, and updat
 - [Requirements](#requirements)
 - [Getting Gong credentials](#getting-gong-credentials)
 - [Installation](#installation)
-  - [Option A — Docker (recommended)](#option-a--docker-recommended)
-  - [Option B — Local Node.js](#option-b--local-nodejs)
+  - [Option A — Pull from Docker Hub (fastest)](#option-a--pull-from-docker-hub-fastest)
+  - [Option B — Build locally from source](#option-b--build-locally-from-source)
+  - [Option C — Local Node.js (no Docker)](#option-c--local-nodejs-no-docker)
 - [Configuration](#configuration)
 - [Connecting to Claude](#connecting-to-claude)
   - [Claude Code (CLI)](#claude-code-cli)
@@ -73,7 +74,31 @@ Lets an LLM list calls, fetch transcripts, query user/team statistics, and updat
 
 ## Installation
 
-### Option A — Docker (recommended)
+### Option A — Pull from Docker Hub (fastest)
+
+Prebuilt multi-arch images (`linux/amd64` + `linux/arm64`) are published at [`lionelquellery/gong-mcp`](https://hub.docker.com/r/lionelquellery/gong-mcp).
+
+```bash
+# 1. Pull the image
+docker pull lionelquellery/gong-mcp:latest
+
+# 2. Create a .env file with your Gong credentials
+cat > .env <<'EOF'
+GONG_ACCESS_KEY=your-access-key
+GONG_ACCESS_SECRET=your-access-secret
+# GONG_API_BASE_URL=https://us-XXXXX.api.gong.io/v2
+EOF
+
+# 3. Smoke-check (Ctrl+C to quit)
+docker run --rm -i --env-file .env lionelquellery/gong-mcp:latest
+# You should see on stderr: [info] gong-mcp ready { ... }
+```
+
+Tags available:
+- `:latest` — current release
+- `:0.1.0` — pinned version
+
+### Option B — Build locally from source
 
 ```bash
 # 1. Clone the repository
@@ -91,10 +116,9 @@ docker build -t gong-mcp:latest .
 
 # 5. Smoke-check that the image starts (Ctrl+C to quit)
 docker run --rm -i --env-file .env gong-mcp:latest
-# You should see on stderr: [info] gong-mcp ready { ... }
 ```
 
-### Option B — Local Node.js
+### Option C — Local Node.js
 
 ```bash
 # 1. Clone and enter the directory
@@ -143,7 +167,13 @@ A ready-to-fill template is provided in [`.env.example`](./.env.example).
 
 ### Claude Code (CLI)
 
-**With Docker:**
+**With Docker (Hub image):**
+```bash
+claude mcp add gong --scope user -- \
+  docker run --rm -i --env-file /absolute/path/to/.env lionelquellery/gong-mcp:latest
+```
+
+**With Docker (locally built):**
 ```bash
 claude mcp add gong --scope user -- \
   docker run --rm -i --env-file /absolute/path/to/gong-mcp/.env gong-mcp:latest
@@ -179,12 +209,14 @@ Restart your Claude Code session — the `gong_*` tools will be available.
       "args": [
         "run", "--rm", "-i",
         "--env-file", "/absolute/path/to/gong-mcp/.env",
-        "gong-mcp:latest"
+        "lionelquellery/gong-mcp:latest"
       ]
     }
   }
 }
 ```
+
+Replace `lionelquellery/gong-mcp:latest` with `gong-mcp:latest` if you built the image yourself from source.
 
 3. **Quit Claude Desktop completely** (`⌘Q` on Mac — not just closing the window) and relaunch.
 4. In a new conversation, confirm the `gong` server appears in the list of connected MCPs (🔌 icon at the bottom of the UI).
