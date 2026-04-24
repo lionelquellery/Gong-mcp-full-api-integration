@@ -8,7 +8,8 @@ cd "$(dirname "$0")/.."
 
 IMAGE="${IMAGE:-gong-mcp:dev}"
 FROM="${FROM:-$(date -u -v-14d +%Y-%m-%dT00:00:00Z 2>/dev/null || date -u -d '14 days ago' +%Y-%m-%dT00:00:00Z)}"
-TO="${TO:-$(date -u +%Y-%m-%dT23:59:59Z)}"
+# Gong's /stats endpoints reject any timestamp in the current day, so bound at end-of-yesterday.
+TO="${TO:-$(date -u -v-1d +%Y-%m-%dT23:59:59Z 2>/dev/null || date -u -d 'yesterday' +%Y-%m-%dT23:59:59Z)}"
 
 hr() { printf '\n==== %s ====\n' "$*"; }
 
@@ -22,7 +23,7 @@ mcp_call() {
       '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}'
     printf '%s\n' "$calls"
     sleep 4
-  } | docker run --rm -i --env-file .env "$IMAGE" 2>/dev/null
+  } | docker run --rm -i --env-file .env -e GONG_ALLOW_RAW_REQUEST=true "$IMAGE" 2>/dev/null
 }
 
 # Extract the structuredContent of the tools/call response with id=$2 from a stream of JSON-RPC lines.
@@ -32,6 +33,24 @@ extract() {
 }
 
 echo "Window: $FROM  →  $TO"
+
+hr "0. security invariant: gong_raw_request is NOT registered by default"
+DEFAULT_TOOLS=$(
+  {
+    printf '%s\n' \
+      '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"s","version":"0"}}}' \
+      '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' \
+      '{"jsonrpc":"2.0","id":10,"method":"tools/list","params":{}}'
+    sleep 2
+  } | docker run --rm -i --env-file .env "$IMAGE" 2>/dev/null | jq -r 'select(.id==10) | .result.tools[].name'
+)
+echo "$DEFAULT_TOOLS"
+if echo "$DEFAULT_TOOLS" | grep -q '^gong_raw_request$'; then
+  echo "❌ security regression: gong_raw_request should be hidden unless GONG_ALLOW_RAW_REQUEST=true"
+  exit 1
+else
+  echo "✅ raw request tool correctly hidden in default config"
+fi
 
 hr "1. gong_list_users (limit=1)"
 RESP=$(mcp_call '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"gong_list_users","arguments":{"limit":1}}}')
@@ -59,13 +78,13 @@ else
   echo "→ no calls in window; skipping get_call / get_call_transcript"
 fi
 
-hr "5. gong_list_activity_stats (interaction=true)"
-RESP=$(mcp_call "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"gong_list_activity_stats\",\"arguments\":{\"fromDate\":\"$FROM\",\"toDate\":\"$TO\",\"interaction\":true}}}")
+hr "5. gong_list_activity_stats (endpoint=interaction)"
+RESP=$(mcp_call "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"gong_list_activity_stats\",\"arguments\":{\"fromDate\":\"$FROM\",\"toDate\":\"$TO\",\"endpoint\":\"interaction\"}}}")
 echo "$RESP" | extract 6 | jq '{endpoint, summary, topLevelKeys: (.stats | keys? // [])}'
 
 hr "6. gong_get_user_stats — auto-pick a user with activity"
 # First, call stats/interaction to find users who actually had calls in the window.
-RESP=$(mcp_call "{\"jsonrpc\":\"2.0\",\"id\":71,\"method\":\"tools/call\",\"params\":{\"name\":\"gong_list_activity_stats\",\"arguments\":{\"fromDate\":\"$FROM\",\"toDate\":\"$TO\",\"raw\":true}}}")
+RESP=$(mcp_call "{\"jsonrpc\":\"2.0\",\"id\":71,\"method\":\"tools/call\",\"params\":{\"name\":\"gong_list_activity_stats\",\"arguments\":{\"fromDate\":\"$FROM\",\"toDate\":\"$TO\",\"endpoint\":\"interaction\",\"raw\":true}}}")
 ACTIVE_USER_ID=$(echo "$RESP" | extract 71 | jq -r '.raw.peopleInteractionStats[0].userId // empty')
 echo "→ picked user with activity: $ACTIVE_USER_ID"
 if [[ -n "$ACTIVE_USER_ID" ]]; then

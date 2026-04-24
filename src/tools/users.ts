@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ToolContext, ToolRegistrar } from "./types.js";
-import { errorResult, successResult } from "./types.js";
+import { errorResult, mergeExtras, successResult } from "./types.js";
 
 export const registerUserTools: ToolRegistrar = (server, ctx) => {
   server.registerTool(
@@ -24,12 +24,13 @@ export const registerUserTools: ToolRegistrar = (server, ctx) => {
     },
     async (args) => {
       try {
-        const query: Record<string, unknown> = {};
+        const TYPED_KEYS = ["cursor", "limit", "teamId", "email"];
+        let query: Record<string, unknown> = {};
         if (args.cursor) query.cursor = args.cursor;
         if (args.limit) query.limit = args.limit;
         if (args.teamId) query.teamId = args.teamId;
         if (args.email) query.email = args.email;
-        if (args.extraParams) Object.assign(query, args.extraParams);
+        query = mergeExtras(query, args.extraParams, TYPED_KEYS);
 
         const res = await ctx.client.request<GongListUsersResponse>({
           method: "GET",
@@ -45,9 +46,9 @@ export const registerUserTools: ToolRegistrar = (server, ctx) => {
           nextCursor: body.records?.cursor ?? null,
         };
         if (args.raw) payload.raw = body;
-        return successResult(payload);
+        return successResult(payload, ctx);
       } catch (e) {
-        return errorResult(e);
+        return errorResult(e, ctx);
       }
     },
   );
@@ -96,9 +97,9 @@ export const registerUserTools: ToolRegistrar = (server, ctx) => {
         };
         if (args.raw) payload.raw = body;
         else payload.stats = userEntry ?? null;
-        return successResult(payload);
+        return successResult(payload, ctx);
       } catch (e) {
-        return errorResult(e);
+        return errorResult(e, ctx);
       }
     },
   );

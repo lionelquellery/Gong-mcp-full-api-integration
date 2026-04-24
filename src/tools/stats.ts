@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ToolRegistrar } from "./types.js";
-import { errorResult, successResult } from "./types.js";
+import { errorResult, mergeExtras, successResult } from "./types.js";
 
 export const registerStatsTools: ToolRegistrar = (server, ctx) => {
   server.registerTool(
@@ -32,14 +32,15 @@ export const registerStatsTools: ToolRegistrar = (server, ctx) => {
     },
     async (args) => {
       try {
-        const filter: Record<string, unknown> = {
+        const TYPED_KEYS = ["fromDate", "toDate", "userIds", "workspaceId", "workspaceIds"];
+        let filter: Record<string, unknown> = {
           fromDate: args.fromDate,
           toDate: args.toDate,
         };
         if (args.userIds) filter.userIds = args.userIds;
         if (args.workspaceId) filter.workspaceId = args.workspaceId;
         if (args.workspaceIds) filter.workspaceIds = args.workspaceIds;
-        if (args.extraFilter) Object.assign(filter, args.extraFilter);
+        filter = mergeExtras(filter, args.extraFilter as Record<string, unknown> | undefined, TYPED_KEYS);
 
         const endpoint = args.endpoint ?? "interaction";
         const path = `/stats/${endpoint}`;
@@ -58,9 +59,9 @@ export const registerStatsTools: ToolRegistrar = (server, ctx) => {
         };
         if (args.raw) payload.raw = body;
         else payload.stats = body;
-        return successResult(payload);
+        return successResult(payload, ctx);
       } catch (e) {
-        return errorResult(e);
+        return errorResult(e, ctx);
       }
     },
   );

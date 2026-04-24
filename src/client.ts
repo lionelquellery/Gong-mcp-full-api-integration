@@ -95,13 +95,22 @@ export class GongClient {
       const responseHeaders = headersToObject(res.headers);
       this.logger.debug(`gong request`, {
         method,
-        url,
+        path: opts.path,
         status: res.status,
         ms: elapsed,
-        headers: redactHeaders(res.headers),
       });
 
-      const text = await res.text();
+      const { text, truncated } = await readBodyWithLimit(res, this.config.maxResponseBytes);
+      if (truncated) {
+        throw new GongApiError(
+          `Gong response exceeded ${this.config.maxResponseBytes} bytes; refusing to buffer in memory.`,
+          {
+            kind: "server",
+            status: res.status,
+            responseHeaders,
+          },
+        );
+      }
       const parsed = parseBody(text, res.headers.get("content-type"));
 
       if (res.ok) {
@@ -229,6 +238,45 @@ function summarizeBody(body: unknown): string {
     }
   }
   return "";
+}
+
+async function readBodyWithLimit(
+  res: Response,
+  maxBytes: number,
+): Promise<{ text: string; truncated: boolean }> {
+  const reader = res.body?.getReader();
+  if (!reader) {
+    const text = await res.text();
+    if (text.length > maxBytes) return { text: text.slice(0, maxBytes), truncated: true };
+    return { text, truncated: false };
+  }
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let received = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > maxBytes) {
+        try {
+          await reader.cancel();
+        } catch {
+          // best-effort
+        }
+        return { text: chunks.join(""), truncated: true };
+      }
+      chunks.push(decoder.decode(value, { stream: true }));
+    }
+    chunks.push(decoder.decode());
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // already released
+    }
+  }
+  return { text: chunks.join(""), truncated: false };
 }
 
 function parseBody(text: string, contentType: string | null): unknown {

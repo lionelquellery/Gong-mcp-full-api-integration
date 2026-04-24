@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ToolContext, ToolRegistrar } from "./types.js";
-import { errorResult, successResult } from "./types.js";
+import { errorResult, mergeExtras, successResult } from "./types.js";
 import { redactText } from "../redact.js";
 
 const IsoDateTime = z
@@ -46,14 +46,15 @@ function registerListCalls(server: import("@modelcontextprotocol/sdk/server/mcp.
     },
     async (args) => {
       try {
-        const query: Record<string, unknown> = {
+        const TYPED_KEYS = ["fromDateTime", "toDateTime", "primaryUserIds", "limit", "cursor"];
+        let query: Record<string, unknown> = {
           fromDateTime: args.fromDateTime,
           toDateTime: args.toDateTime,
         };
         if (args.userId) query.primaryUserIds = args.userId;
         if (args.limit) query.limit = args.limit;
         if (args.cursor) query.cursor = args.cursor;
-        if (args.extraParams) Object.assign(query, args.extraParams);
+        query = mergeExtras(query, args.extraParams, TYPED_KEYS);
 
         const res = await ctx.client.request<GongListCallsResponse>({
           method: "GET",
@@ -72,9 +73,9 @@ function registerListCalls(server: import("@modelcontextprotocol/sdk/server/mcp.
           nextCursor,
         };
         if (args.raw) payload.raw = body;
-        return successResult(payload);
+        return successResult(payload, ctx);
       } catch (e) {
-        return errorResult(e);
+        return errorResult(e, ctx);
       }
     },
   );
@@ -139,9 +140,9 @@ function registerGetCall(server: import("@modelcontextprotocol/sdk/server/mcp.js
           call: summarizeCall(call, { includeParticipants: true }),
         };
         if (args.raw) payload.raw = body;
-        return successResult(payload);
+        return successResult(payload, ctx);
       } catch (e) {
-        return errorResult(e);
+        return errorResult(e, ctx);
       }
     },
   );
@@ -208,9 +209,9 @@ function registerGetCallTranscript(
             .join("\n");
         }
         if (args.raw) payload.raw = body;
-        return successResult(payload);
+        return successResult(payload, ctx);
       } catch (e) {
-        return errorResult(e);
+        return errorResult(e, ctx);
       }
     },
   );

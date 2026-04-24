@@ -42,9 +42,9 @@ export const registerCrmTools: ToolRegistrar = (server, ctx) => {
           response: body,
         };
         if (args.raw) payload.raw = body;
-        return successResult(payload);
+        return successResult(payload, ctx);
       } catch (e) {
-        return errorResult(e);
+        return errorResult(e, ctx);
       }
     },
   );

@@ -127,8 +127,13 @@ All configuration happens through environment variables (via `.env` locally, or 
 | `GONG_ACCESS_KEY` | ✅ | — | Gong access key (Basic Auth username) |
 | `GONG_ACCESS_SECRET` | ✅ | — | Gong access key secret (Basic Auth password) |
 | `GONG_API_BASE_URL` | ❌ | `https://api.gong.io/v2` | API base URL. For tenant-specific hosts: `https://us-XXXXX.api.gong.io/v2` |
-| `REDACT_PII` | ❌ | `false` | If `true`, masks emails/phone numbers in transcript text |
+| `REDACT_PII` | ❌ | `false` | If `true`, scrubs emails / phone numbers / personal URLs from transcripts *and* from tool output (participant emails, `userEmailAddress`, etc.) |
 | `LOG_LEVEL` | ❌ | `info` | `debug` \| `info` \| `warn` \| `error` (logs go to stderr only) |
+| `GONG_ALLOW_RAW_REQUEST` | ❌ | `false` | If `true`, registers the generic `gong_raw_request` tool. Off by default so a poisoned transcript cannot coax the LLM into calling arbitrary Gong endpoints. |
+| `GONG_RAW_REQUEST_ALLOWED_PREFIXES` | ❌ | `/calls,/users,/stats,/crm,/library,/workspaces,/settings` | Comma-separated path prefixes the raw tool is allowed to hit (when enabled). |
+| `GONG_INCLUDE_ERROR_BODY` | ❌ | `false` | If `true`, includes Gong's full error response body in tool error payloads. Off by default — error bodies can echo submitted fields or adjacent data. |
+| `GONG_MAX_RESPONSE_BYTES` | ❌ | `8388608` (8 MB) | Hard cap on Gong response body size before the client aborts. |
+| `GONG_MAX_TOOL_OUTPUT_BYTES` | ❌ | `1048576` (1 MB) | Hard cap on the serialized tool result returned to the MCP client. |
 
 A ready-to-fill template is provided in [`.env.example`](./.env.example).
 
@@ -247,8 +252,12 @@ An end-to-end smoke test is provided in [`scripts/smoke.sh`](./scripts/smoke.sh)
 - **Credentials are never logged.** The `Authorization` header is built once at startup and redacted in any debug output.
 - **`.env` is in `.gitignore`** — never commit your real keys. The `.env.example` template is commit-safe (placeholders only).
 - **Key rotation**: if a key has leaked (logs, chat transcripts, accidental sharing…), **regenerate it immediately** from the Gong admin console. Regenerating invalidates the previous pair.
-- **`gong_raw_request`** refuses absolute URLs and rejects any attempt to override the `Authorization` header — credentials cannot be exfiltrated to another server through this tool.
-- **PII**: transcripts may contain emails and phone numbers in clear text. Enable `REDACT_PII=true` if your usage context requires it.
+- **`gong_raw_request` is gated off by default.** Set `GONG_ALLOW_RAW_REQUEST=true` at server start to enable it. Even when enabled, it only accepts relative paths matching `GONG_RAW_REQUEST_ALLOWED_PREFIXES`, rejects absolute URLs, rejects path traversal (`..`), refuses to override `Authorization` / `Cookie` / `Content-Type` / `Host`, and strips response headers from the payload returned to the LLM.
+- **Error payloads are minimized.** Tool errors return the summarized Gong message only. Set `GONG_INCLUDE_ERROR_BODY=true` to restore the full error body (useful for debugging, not for production).
+- **Input smuggling**: `extraParams` / `extraFilter` / additional headers cannot override typed fields (`fromDate`, `toDate`, `userIds`, `workspaceId`, `Authorization`, etc.).
+- **PII**: transcripts and tool output may contain emails, phone numbers, and personal meeting URLs in clear text. Enable `REDACT_PII=true` to scrub them. Redaction applies to the summarized output *and* to the `raw: true` payloads (recursive walk on known PII keys).
+- **Response-size caps**: the client aborts any Gong response over `GONG_MAX_RESPONSE_BYTES`, and any tool output over `GONG_MAX_TOOL_OUTPUT_BYTES` is truncated with a marker — prevents memory and context-window blowups.
+- **Prompt injection awareness**: transcripts, call titles, and participant names come from external parties on a recorded call. Do not assume them trustworthy. The `gong_update_crm_object` tool mutates CRM data — consider running a read-only deployment (simply do not wire up that tool's permissions) if the LLM calling it cannot be isolated from poisoned input.
 - **Multi-tenant**: this server is not designed to be shared across users with different credentials. One server process = one key pair.
 
 ---
