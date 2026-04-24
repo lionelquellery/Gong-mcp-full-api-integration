@@ -189,6 +189,8 @@ Restart your Claude Code session — the `gong_*` tools will be available.
 3. **Quit Claude Desktop completely** (`⌘Q` on Mac — not just closing the window) and relaunch.
 4. In a new conversation, confirm the `gong` server appears in the list of connected MCPs (🔌 icon at the bottom of the UI).
 
+> ⚠️ **Gotcha**: edit `claude_desktop_config.json` only while Claude Desktop is *not running*. If you edit the file while the app is open, the next preference change you make in the UI (theme, sidebar mode, shortcut, anything) will cause Claude to rewrite the file from its in-memory state — wiping your `mcpServers` edits. Safe flow: `⌘Q` → edit → relaunch.
+
 ### Other MCP clients
 
 Any client that supports MCP over stdio can launch the server. The command is:
@@ -305,6 +307,7 @@ PRs welcome — please add a case to `scripts/smoke.sh` or a unit test when addi
 
 - **`gong_list_users` ignores `limit`**: Gong returns a fixed page size (~100) for this endpoint regardless of the value you pass. Cursor pagination still works.
 - **`gong_get_user_stats` only covers users with activity in the window**: Gong only returns stats for users who had at least one call. Inactive users or users without activity return nothing.
+- **`/stats/*` endpoints reject same-day timestamps**: Gong requires date ranges to end strictly before the current day. If you pass `toDate` in today, Gong replies `400 "The date(s) should not exceed the current day."`. The smoke script (`scripts/smoke.sh`) defaults to "end of yesterday" for this reason. `gong_list_calls` does not have this restriction.
 - **`gong_update_crm_object`** has only been exercised against the batch endpoint `/v2/crm/entities`. Depending on your tenant and CRM integration (Salesforce, HubSpot…), additional fields (`integrationId`) may be required — use `gong_raw_request` to prototype.
 - **Transcript speaker labels** are Gong's internal `speakerId`s, not real names. To resolve them, cross-reference with the `parties[]` returned by `gong_get_call`.
 - **No auto-pagination**: intentional (keeps the LLM in control), but may require multiple turns for large volumes.
